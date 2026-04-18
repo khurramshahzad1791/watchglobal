@@ -45,16 +45,35 @@ selected_country = st.sidebar.selectbox("🌍 Select your country", list(countri
 country_code = countries[selected_country]
 
 # -------------------------------
-# COUNTRY-SPECIFIC M3U PLAYLISTS
+# UPDATED: MORE RELIABLE COUNTRY-SPECIFIC M3U PLAYLISTS
 # -------------------------------
 COUNTRY_PLAYLISTS = {
-    "India": "https://raw.githubusercontent.com/freearhey/iptv/master/channels/in.m3u",
-    "Indonesia": "https://raw.githubusercontent.com/freearhey/iptv/master/channels/id.m3u",
-    "China": "https://raw.githubusercontent.com/best-fan/iptv-sources/master/cn_all.m3u8",
-    "Russia": "https://raw.githubusercontent.com/CrocoUser/zabava-project/main/zabava-ef.m3u",
-    "Germany": "https://raw.githubusercontent.com/josxha/german-tv-m3u/main/german-tv.m3u",
-    "Default": "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/plutotv_us.m3u"
+    "India": "https://iptv-org.github.io/iptv/countries/in.m3u",
+    "Pakistan": "https://iptv-org.github.io/iptv/countries/pk.m3u",
+    "Philippines": "https://iptv-org.github.io/iptv/countries/ph.m3u",
+    "South Korea": "https://iptv-org.github.io/iptv/countries/kr.m3u",
+    "Japan": "https://iptv-org.github.io/iptv/countries/jp.m3u",
+    "Indonesia": "https://iptv-org.github.io/iptv/countries/id.m3u",
+    "Vietnam": "https://iptv-org.github.io/iptv/countries/vn.m3u",
+    "Thailand": "https://iptv-org.github.io/iptv/countries/th.m3u",
+    "Malaysia": "https://iptv-org.github.io/iptv/countries/my.m3u",
+    "China": "https://iptv-org.github.io/iptv/countries/cn.m3u",
+    "Russia": "https://iptv-org.github.io/iptv/countries/ru.m3u",
+    "Turkey": "https://iptv-org.github.io/iptv/countries/tr.m3u",
+    "UAE": "https://iptv-org.github.io/iptv/countries/ae.m3u",
+    "Saudi Arabia": "https://iptv-org.github.io/iptv/countries/sa.m3u",
+    "Germany": "https://iptv-org.github.io/iptv/countries/de.m3u",
+    "France": "https://iptv-org.github.io/iptv/countries/fr.m3u",
+    "United States": "https://iptv-org.github.io/iptv/countries/us.m3u",
+    "United Kingdom": "https://iptv-org.github.io/iptv/countries/gb.m3u",
+    "Canada": "https://iptv-org.github.io/iptv/countries/ca.m3u",
+    "Australia": "https://iptv-org.github.io/iptv/countries/au.m3u",
 }
+
+# -------------------------------
+# FALLBACK: GLOBAL PLAYLIST
+# -------------------------------
+GLOBAL_PLAYLIST = "https://iptv-org.github.io/iptv/index.m3u"
 
 # -------------------------------
 # FREE STREAMING SERVICES
@@ -100,10 +119,6 @@ def fetch_m3u_playlist(url):
                 group_match = re.search(r'group-title="([^"]+)"', line)
                 if group_match:
                     current['group'] = group_match.group(1)
-                # Extract language
-                lang_match = re.search(r'tvg-language="([^"]+)"', line)
-                if lang_match:
-                    current['language'] = lang_match.group(1)
             elif line.startswith('http') and current:
                 current['stream_url'] = line
                 if current.get('stream_url') and current.get('name'):
@@ -114,38 +129,32 @@ def fetch_m3u_playlist(url):
         st.error(f"Error fetching playlist: {e}")
         return []
 
-def filter_by_country(channels, country_code, country_name):
-    """Filter channels by country/language keywords"""
-    keywords = {
-        "us": ["us","usa","united states","american","english"],
-        "gb": ["uk","united kingdom","british","english"],
-        "in": ["india","indian","hindi","bollywood","tamil","telugu"],
-        "pk": ["pakistan","pakistani","urdu","geo","ary","hum"],
-        "cn": ["china","chinese","cctv","mandarin","cantonese"],
-        "kr": ["korea","korean","south korea","kbs","mbc","sbs"],
-        "jp": ["japan","japanese","nhk","tokyo"],
-        "ru": ["russia","russian","россия","русский"],
-        "ph": ["philippines","filipino","tagalog","abs-cbn","gma"],
-        "tr": ["turkey","turkish","türkiye","trt"],
-        "ae": ["uae","dubai","arabic"],
-        "sa": ["saudi","arabic"],
-        "vn": ["vietnam","vietnamese","vtv"],
-        "th": ["thailand","thai"],
-        "id": ["indonesia","indonesian"],
-        "my": ["malaysia","malaysian","malay"]
-    }
-    kw = keywords.get(country_code, [country_name.lower()])
+def fetch_all_country_channels(selected_country):
+    """Try to fetch country-specific playlist, fallback to filtered global playlist"""
+    playlist_url = COUNTRY_PLAYLISTS.get(selected_country)
+    
+    if playlist_url:
+        channels = fetch_m3u_playlist(playlist_url)
+        if channels:
+            return channels
+    
+    # Fallback: fetch global playlist and filter by country code
+    st.info(f"Using global playlist filtered for {selected_country}...")
+    all_channels = fetch_m3u_playlist(GLOBAL_PLAYLIST)
     filtered = []
-    for ch in channels:
-        name = ch.get('name','').lower()
-        grp = ch.get('group','').lower()
-        lang = ch.get('language','').lower()
-        if any(k in name or k in grp or k in lang for k in kw):
+    for ch in all_channels:
+        name = ch.get('name', '').lower()
+        # Filter by country code appearing in channel name or group
+        if country_code in name or selected_country.lower() in name:
             filtered.append(ch)
     return filtered
 
+# -------------------------------
+# MOVIE SEARCH FUNCTION
+# -------------------------------
 @st.cache_data(ttl=86400, show_spinner=False)
 def search_movies_rapidapi(query, country):
+    """Search for movies using Streaming Availability API (RapidAPI) with country parameter"""
     if not RAPIDAPI_KEY:
         return []
     try:
@@ -162,6 +171,7 @@ def search_movies_rapidapi(query, country):
         return []
 
 def get_streaming_link(movie_data, service_name):
+    """Extract streaming link for a specific service from the API response"""
     if not movie_data or 'streamingInfo' not in movie_data:
         return None
     mapping = {"tubi":"tubi","plex":"plex","pluto tv":"pluto","crackle":"crackle",
@@ -180,13 +190,14 @@ tab_live, tab_movies, tab_search = st.tabs(["📡 Live TV", "🎬 Free Services"
 # ========== LIVE TV ==========
 with tab_live:
     st.subheader(f"📡 Live TV Channels - {selected_country}")
-    playlist_url = COUNTRY_PLAYLISTS.get(selected_country, COUNTRY_PLAYLISTS["Default"])
+    
     if st.button("🔄 Refresh Channels"):
         st.cache_data.clear()
         st.rerun()
+    
     with st.spinner(f"Loading channels for {selected_country}..."):
-        all_ch = fetch_m3u_playlist(playlist_url)
-        channels = filter_by_country(all_ch, country_code, selected_country) if selected_country not in COUNTRY_PLAYLISTS else all_ch
+        channels = fetch_all_country_channels(selected_country)
+    
     if channels:
         st.success(f"✅ {len(channels)} channels found")
         for i in range(0, min(len(channels), 100), 4):
@@ -203,32 +214,41 @@ with tab_live:
                                 st.caption(f"📁 {ch['group']}")
                             st.link_button("▶️ Watch", ch.get('stream_url','#'), use_container_width=True)
     else:
-        st.info(f"No channels found for {selected_country}. Try another country.")
+        st.warning(f"No channels found for {selected_country}. Try another country.")
+        st.info("💡 Note: Free IPTV playlists rely on community-maintained sources. Some channels may be temporarily unavailable.")
 
 # ========== FREE SERVICES ==========
 with tab_movies:
     st.subheader("🎬 Browse Free Streaming Services")
+    st.caption("These services are free, ad-supported, and available in select regions.")
     cols = st.columns(4)
     for idx, (name, url) in enumerate(FREE_SERVICES.items()):
         with cols[idx % 4]:
             st.markdown(f"### {name}")
             st.link_button(f"Open {name} →", url, use_container_width=True)
+            st.caption("Free, ad-supported")
 
 # ========== SEARCH ==========
 with tab_search:
     st.subheader(f"🔍 Search Movies in {selected_country}")
-    query = st.text_input("Enter movie title", placeholder="e.g., The Matrix")
+    st.caption("The Streaming Availability API searches across Tubi, Plex, Pluto TV, Crackle, and more for your selected country.")
+    
+    query = st.text_input("Enter movie title", placeholder="e.g., The Matrix, Inception, Parasite...")
+    
     if query:
-        with st.spinner("Searching..."):
+        with st.spinner(f"Searching for '{query}' in {selected_country}..."):
             results = search_movies_rapidapi(query, country_code)
+        
         if results:
+            st.success(f"✨ Found {len(results)} results")
             for movie in results[:20]:
-                title = movie.get('title','Unknown')
-                year = movie.get('year','N/A')
-                rating = movie.get('imdbRating','N/A')
-                overview = movie.get('overview','')[:300]
-                poster = movie.get('posterPath','')
+                title = movie.get('title', 'Unknown')
+                year = movie.get('year', 'N/A')
+                rating = movie.get('imdbRating', 'N/A')
+                overview = movie.get('overview', '')[:300]
+                poster = movie.get('posterPath', '')
                 poster_url = f"https://image.tmdb.org/t/p/w500{poster}" if poster else None
+                
                 col1, col2 = st.columns([1,3])
                 with col1:
                     st.image(poster_url or "https://via.placeholder.com/150x225?text=No+Poster", width=150)
@@ -238,14 +258,15 @@ with tab_search:
                     st.write(overview)
                     links = [(s, get_streaming_link(movie, s)) for s in FREE_SERVICES if get_streaming_link(movie, s)]
                     if links:
-                        st.markdown("**Watch for free on:**")
+                        st.markdown("**🍿 Watch for free on:**")
                         for srv, link in links[:4]:
                             st.link_button(srv, link, use_container_width=True)
                     else:
-                        st.caption(f"Not available on free services in {selected_country}.")
+                        st.info(f"⚠️ Not available on free services in {selected_country}.")
+                        st.caption("Try changing your country selection in the sidebar.")
                 st.divider()
         else:
-            st.info("No movies found. Try different title or country.")
+            st.info(f"No movies found for '{query}' in {selected_country}. Try a different title or country.")
 
 st.divider()
-st.caption(f"Updated {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+st.caption(f"Global FAST Stream Hub • Aggregates free ad-supported content from around the world • Updated {datetime.now().strftime('%Y-%m-%d %H:%M')}")
